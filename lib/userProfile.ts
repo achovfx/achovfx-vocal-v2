@@ -10,6 +10,7 @@ export const DEFAULT_USER: UserProfile = {
   avatarSeed: 'default',
   noiseSuppression: true,
   echoCancellation: true,
+  preferredVoiceEngine: 'jitsi-cloud',
 };
 
 let cachedRaw: string | null = null;
@@ -46,6 +47,7 @@ function getClientSnapshot(): UserProfile {
           avatarSeed: randId,
           noiseSuppression: true,
           echoCancellation: true,
+          preferredVoiceEngine: 'jitsi-cloud',
         };
         localStorage.setItem('vc_user_profile', JSON.stringify(cachedProfile));
       }

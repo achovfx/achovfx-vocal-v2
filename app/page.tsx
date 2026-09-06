@@ -6,7 +6,7 @@ import { RoomChannel, UserProfile } from '@/lib/types';
 import { ChannelSidebar } from '@/components/ChannelSidebar';
 import { TextChatPanel } from '@/components/TextChatPanel';
 import { SettingsModal } from '@/components/SettingsModal';
-import { ConnectionQualityIndicator } from '@/components/ConnectionQualityIndicator';
+import { VoiceConferenceWidget } from '@/components/VoiceConferenceWidget';
 import { useVoiceChat } from '@/hooks/useVoiceChat';
 import { defaultChannels } from '@/lib/serverState';
 import { useUserProfile } from '@/lib/userProfile';
@@ -46,7 +46,7 @@ export default function Home() {
     };
   }, []);
 
-  // Voice Chat Hook (WebRTC mesh - Zero external keys or env required)
+  // Voice Chat Hook (Jitsi Meet Ready Cloud Voice)
   const {
     isConnected,
     isConnecting,
@@ -58,11 +58,14 @@ export default function Home() {
     disconnectVoice,
     toggleMute,
     toggleDeafen,
-    connectionQuality,
+    jitsiUrl,
+    jitsiRoomName,
+    activeEngine,
+    openJitsiInNewTab,
   } = useVoiceChat({
     roomId: connectedRoomId || currentRoomId,
     currentUser,
-    engine: 'webrtc-mesh',
+    engine: currentUser.preferredVoiceEngine || 'jitsi-cloud',
   });
 
   // Update connectedRoomId on connection state changes
@@ -149,11 +152,6 @@ export default function Home() {
             <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400 font-medium">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span>ویس فعال ({participants.length} نفر)</span>
-              <ConnectionQualityIndicator
-                quality={connectionQuality}
-                isConnected={isConnected}
-                showPingText={true}
-              />
             </div>
           )}
 
@@ -206,7 +204,6 @@ export default function Home() {
             isMuted={isMuted}
             isDeafened={isDeafened}
             localAudioLevel={localAudioLevel}
-            connectionQuality={connectionQuality}
             onSelectChannel={(roomId) => {
               setCurrentRoomId(roomId);
               setMobileSidebarOpen(false);
@@ -216,6 +213,7 @@ export default function Home() {
             onToggleMute={toggleMute}
             onToggleDeafen={toggleDeafen}
             onOpenProfileSettings={() => setIsSettingsOpen(true)}
+            onOpenVoiceInNewTab={openJitsiInNewTab}
           />
         </div>
 
@@ -239,14 +237,35 @@ export default function Home() {
           isMuted={isMuted}
           isDeafened={isDeafened}
           localAudioLevel={localAudioLevel}
-          connectionQuality={connectionQuality}
           onConnectVoice={() => handleConnectToVoice(currentRoomId)}
           onDisconnectVoice={handleDisconnectVoice}
           onToggleMute={toggleMute}
           onToggleDeafen={toggleDeafen}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenVoiceInNewTab={openJitsiInNewTab}
         />
       </div>
+
+      {/* Floating Ready-Made Voice Conference Widget */}
+      <VoiceConferenceWidget
+        roomId={connectedRoomId || currentRoomId}
+        roomNameFa={
+          channels.find((c) => c.id === (connectedRoomId || currentRoomId))?.nameFa ||
+          currentRoom?.nameFa ||
+          'ویس چنل'
+        }
+        currentUser={currentUser}
+        isConnected={isConnected}
+        isMuted={isMuted}
+        isDeafened={isDeafened}
+        participants={participants}
+        jitsiUrl={jitsiUrl}
+        jitsiRoomName={jitsiRoomName}
+        engine={activeEngine}
+        onDisconnect={handleDisconnectVoice}
+        onToggleMute={toggleMute}
+        onToggleDeafen={toggleDeafen}
+      />
 
       {/* Settings & Profile Modal */}
       <SettingsModal

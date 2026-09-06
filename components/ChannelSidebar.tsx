@@ -13,9 +13,9 @@ import {
   Settings,
   Users,
   Sparkles,
+  ExternalLink,
 } from 'lucide-react';
-import { RoomChannel, UserProfile, VoiceParticipant, ConnectionQuality } from '@/lib/types';
-import { ConnectionQualityIndicator } from '@/components/ConnectionQualityIndicator';
+import { RoomChannel, UserProfile, VoiceParticipant } from '@/lib/types';
 
 interface ChannelSidebarProps {
   currentRoomId: string;
@@ -28,13 +28,13 @@ interface ChannelSidebarProps {
   isMuted: boolean;
   isDeafened: boolean;
   localAudioLevel: number;
-  connectionQuality?: ConnectionQuality;
   onSelectChannel: (roomId: string) => void;
   onConnectVoice: (roomId: string) => void;
   onDisconnectVoice: () => void;
   onToggleMute: () => void;
   onToggleDeafen: () => void;
   onOpenProfileSettings: () => void;
+  onOpenVoiceInNewTab?: () => void;
 }
 
 export function ChannelSidebar({
@@ -48,13 +48,13 @@ export function ChannelSidebar({
   isMuted,
   isDeafened,
   localAudioLevel,
-  connectionQuality,
   onSelectChannel,
   onConnectVoice,
   onDisconnectVoice,
   onToggleMute,
   onToggleDeafen,
   onOpenProfileSettings,
+  onOpenVoiceInNewTab,
 }: ChannelSidebarProps) {
   const getChannelIcon = (category: string) => {
     switch (category) {
@@ -226,30 +226,33 @@ export function ChannelSidebar({
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               <div>
-                <div className="flex items-center gap-1.5">
-                  <p className="text-xs font-bold text-emerald-300 truncate max-w-[130px]">
-                    {connectedChannel.nameFa || connectedChannel.name}
-                  </p>
-                  {connectionQuality && (
-                    <ConnectionQualityIndicator
-                      quality={connectionQuality}
-                      isConnected={isConnected}
-                    />
-                  )}
-                </div>
-                <p className="text-[10px] text-emerald-400/70">
-                  اتصال زنده P2P WebRTC
+                <p className="text-xs font-bold text-emerald-300 truncate max-w-[140px]">
+                  {connectedChannel.nameFa || connectedChannel.name}
+                </p>
+                <p className="text-[10px] text-emerald-400/80 font-medium">
+                  سرور آماده Jitsi Meet
                 </p>
               </div>
             </div>
 
-            <button
-              onClick={onDisconnectVoice}
-              title="قطع اتصال از ویس"
-              className="p-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/30 transition-colors"
-            >
-              <PhoneOff className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-1">
+              {onOpenVoiceInNewTab && (
+                <button
+                  onClick={onOpenVoiceInNewTab}
+                  title="باز کردن در تب جداگانه (Jitsi Meet)"
+                  className="p-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/40 text-indigo-300 border border-indigo-500/30 transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button
+                onClick={onDisconnectVoice}
+                title="قطع اتصال از ویس"
+                className="p-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white border border-rose-500/30 transition-colors"
+              >
+                <PhoneOff className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           {/* Controls row */}

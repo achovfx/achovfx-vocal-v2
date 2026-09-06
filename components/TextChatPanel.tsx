@@ -15,10 +15,10 @@ import {
   Share2,
   Check,
   Settings,
+  ExternalLink,
 } from 'lucide-react';
-import { ChatMessage, UserProfile, VoiceParticipant, ConnectionQuality } from '@/lib/types';
+import { ChatMessage, UserProfile, VoiceParticipant } from '@/lib/types';
 import { playSound } from '@/lib/sounds';
-import { ConnectionQualityIndicator } from '@/components/ConnectionQualityIndicator';
 
 interface TextChatPanelProps {
   roomId: string;
@@ -31,12 +31,12 @@ interface TextChatPanelProps {
   isMuted: boolean;
   isDeafened: boolean;
   localAudioLevel: number;
-  connectionQuality?: ConnectionQuality;
   onConnectVoice: () => void;
   onDisconnectVoice: () => void;
   onToggleMute: () => void;
   onToggleDeafen: () => void;
   onOpenSettings?: () => void;
+  onOpenVoiceInNewTab?: () => void;
 }
 
 export function TextChatPanel({
@@ -50,12 +50,12 @@ export function TextChatPanel({
   isMuted,
   isDeafened,
   localAudioLevel,
-  connectionQuality,
   onConnectVoice,
   onDisconnectVoice,
   onToggleMute,
   onToggleDeafen,
   onOpenSettings,
+  onOpenVoiceInNewTab,
 }: TextChatPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
@@ -276,12 +276,15 @@ export function TextChatPanel({
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 <span className="font-medium hidden sm:inline">متصل به ویس</span>
-                {connectionQuality && (
-                  <ConnectionQualityIndicator
-                    quality={connectionQuality}
-                    isConnected={isConnectedToVoice}
-                    showPingText={true}
-                  />
+                {onOpenVoiceInNewTab && (
+                  <button
+                    onClick={onOpenVoiceInNewTab}
+                    title="باز کردن ویس در تب جداگانه (Jitsi Meet بدون محدودیت مرورگر)"
+                    className="px-1.5 py-0.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[10px] flex items-center gap-1 transition-colors"
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" />
+                    <span>تب اختصاصی</span>
+                  </button>
                 )}
                 <button
                   onClick={onToggleMute}

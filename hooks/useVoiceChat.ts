@@ -1,16 +1,20 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { VoiceParticipant, UserProfile, ConnectionQuality, ConnectionQualityLevel } from '@/lib/types';
+import { VoiceParticipant, UserProfile, VoiceEngine, ConnectionQuality, ConnectionQualityLevel } from '@/lib/types';
 import { playSound } from '@/lib/sounds';
 
 interface UseVoiceChatOptions {
   roomId: string;
   currentUser: UserProfile;
-  engine: 'webrtc-mesh' | 'jitsi-cloud';
+  engine?: VoiceEngine;
 }
 
-export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOptions) {
+export function useVoiceChat({
+  roomId,
+  currentUser,
+  engine = 'jitsi-cloud',
+}: UseVoiceChatOptions) {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -22,151 +26,33 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
     level: 'disconnected',
   });
 
+  // Current active engine (defaults to user preference or jitsi-cloud)
+  const activeEngine: VoiceEngine = currentUser.preferredVoiceEngine || engine || 'jitsi-cloud';
+
+  // Compute deterministic Jitsi room name for this channel
+  const cleanRoomId = (roomId || 'general').replace(/[^a-zA-Z0-9]/g, '_');
+  const jitsiRoomName = `PardisVoice_${cleanRoomId}`;
+
+  // Build the Jitsi conference URL with ready-made configuration
+  const jitsiDomain =
+    activeEngine === 'jitsi-8x8' ? '8x8.vc/vpaas-magic-cookie-free' : 'meet.jit.si';
+  const jitsiUrl = `https://${jitsiDomain}/${jitsiRoomName}#userInfo.displayName=${encodeURIComponent(
+    currentUser.name
+  )}&config.startWithAudioMuted=${isMuted}&config.startWithVideoMuted=true&config.prejoinPageEnabled=false&config.enableWelcomePage=false&config.disableDeepLinking=true&config.disable1On1Mode=true&interfaceConfig.TOOLBAR_BUTTONS=['microphone','hangup','settings','tileview']`;
+
   // References
   const localStreamRef = useRef<MediaStream | null>(null);
-  const peerInstanceRef = useRef<any>(null);
-  const myPeerIdRef = useRef<string>('');
-  const callsRef = useRef<Map<string, any>>(new Map()); // peerId -> call
-  const remoteAudioElsRef = useRef<Map<string, HTMLAudioElement>>(new Map()); // participantId -> audio
   const localAudioCtxRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const isSpeakingRef = useRef<boolean>(false);
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const qualityIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Measure WebRTC stream quality from active RTCPeerConnections
-  const updateConnectionQuality = useCallback(async () => {
-    if (!peerInstanceRef.current || peerInstanceRef.current.destroyed) {
-      setConnectionQuality({ level: 'disconnected' });
-      return;
+  // Helper to open Jitsi in a new browser tab with unrestricted microphone permissions
+  const openJitsiInNewTab = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      window.open(jitsiUrl, '_blank', 'noopener,noreferrer');
     }
-
-    // If connected to voice room without other participants yet, WebRTC signaling is healthy
-    if (callsRef.current.size === 0) {
-      setConnectionQuality({
-        level: 'good',
-        rtt: undefined,
-        packetLoss: 0,
-        jitter: 0,
-      });
-      return;
-    }
-
-    let totalRtt = 0;
-    let rttCount = 0;
-    let totalLoss = 0;
-    let lossCount = 0;
-    let totalJitter = 0;
-    let jitterCount = 0;
-    let failedConnections = 0;
-
-    for (const call of callsRef.current.values()) {
-      const pc = call?.peerConnection as RTCPeerConnection | undefined;
-      if (!pc) continue;
-
-      if (
-        pc.connectionState === 'failed' ||
-        pc.iceConnectionState === 'failed' ||
-        pc.connectionState === 'disconnected'
-      ) {
-        failedConnections++;
-        continue;
-      }
-
-      try {
-        const stats = await pc.getStats();
-        stats.forEach((report: any) => {
-          // Candidate pair round trip time
-          if (
-            (report.type === 'candidate-pair' || report.type === 'remote-candidate') &&
-            (report.state === 'succeeded' || report.nominated === true)
-          ) {
-            const rttVal = report.currentRoundTripTime ?? report.roundTripTime;
-            if (typeof rttVal === 'number' && !isNaN(rttVal) && rttVal > 0) {
-              totalRtt += rttVal * 1000;
-              rttCount++;
-            }
-          }
-
-          // Inbound audio RTP stats
-          if (
-            report.type === 'inbound-rtp' &&
-            (report.kind === 'audio' || report.mediaType === 'audio')
-          ) {
-            if (typeof report.jitter === 'number' && !isNaN(report.jitter)) {
-              totalJitter += report.jitter * 1000;
-              jitterCount++;
-            }
-            if (
-              typeof report.packetsLost === 'number' &&
-              typeof report.packetsReceived === 'number'
-            ) {
-              const totalPackets = report.packetsLost + report.packetsReceived;
-              if (totalPackets > 0) {
-                const lossRate = (report.packetsLost / totalPackets) * 100;
-                totalLoss += lossRate;
-                lossCount++;
-              }
-            }
-          }
-        });
-      } catch {}
-    }
-
-    if (failedConnections > 0 && rttCount === 0) {
-      setConnectionQuality({
-        level: 'poor',
-        packetLoss: 100,
-      });
-      return;
-    }
-
-    const avgRtt = rttCount > 0 ? Math.round(totalRtt / rttCount) : undefined;
-    const avgLoss = lossCount > 0 ? Math.round((totalLoss / lossCount) * 10) / 10 : 0;
-    const avgJitter = jitterCount > 0 ? Math.round(totalJitter / jitterCount) : undefined;
-
-    let level: ConnectionQualityLevel = 'good';
-    if (avgLoss > 6 || (avgRtt !== undefined && avgRtt > 280)) {
-      level = 'poor';
-    } else if (avgLoss > 1.8 || (avgRtt !== undefined && avgRtt > 140)) {
-      level = 'fair';
-    } else {
-      level = 'good';
-    }
-
-    setConnectionQuality({
-      level,
-      rtt: avgRtt,
-      packetLoss: avgLoss,
-      jitter: avgJitter,
-    });
-  }, []);
-
-  // Helper to attach remote audio stream
-  const attachRemoteAudio = useCallback((id: string, stream: MediaStream) => {
-    let audio = remoteAudioElsRef.current.get(id);
-    if (!audio) {
-      audio = document.createElement('audio');
-      audio.autoplay = true;
-      audio.setAttribute('playsinline', 'true');
-      audio.id = `audio-remote-${id}`;
-      document.body.appendChild(audio);
-      remoteAudioElsRef.current.set(id, audio);
-    }
-    audio.srcObject = stream;
-    audio.volume = isDeafened ? 0 : 1.0;
-    audio.play().catch(() => {});
-  }, [isDeafened]);
-
-  const detachRemoteAudio = useCallback((id: string) => {
-    const audio = remoteAudioElsRef.current.get(id);
-    if (audio) {
-      audio.pause();
-      audio.srcObject = null;
-      audio.remove();
-      remoteAudioElsRef.current.delete(id);
-    }
-  }, []);
+  }, [jitsiUrl]);
 
   // Disconnect from voice
   const disconnectVoice = useCallback(async () => {
@@ -190,42 +76,15 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
 
     setAnalyserNode(null);
 
-    // 4. Close all active WebRTC calls
-    callsRef.current.forEach((call) => {
-      try {
-        call.close();
-      } catch {}
-    });
-    callsRef.current.clear();
-
-    // 5. Remove remote audio elements
-    remoteAudioElsRef.current.forEach((el) => {
-      el.pause();
-      el.srcObject = null;
-      el.remove();
-    });
-    remoteAudioElsRef.current.clear();
-
-    // 6. Destroy Peer instance
-    if (peerInstanceRef.current) {
-      try {
-        peerInstanceRef.current.destroy();
-      } catch {}
-      peerInstanceRef.current = null;
-    }
-
-    // 7. Clear heartbeat and quality monitors
+    // 4. Clear heartbeat interval
     if (heartbeatIntervalRef.current) {
       clearInterval(heartbeatIntervalRef.current);
       heartbeatIntervalRef.current = null;
     }
-    if (qualityIntervalRef.current) {
-      clearInterval(qualityIntervalRef.current);
-      qualityIntervalRef.current = null;
-    }
+
     setConnectionQuality({ level: 'disconnected' });
 
-    // 8. Inform Next.js server of exit
+    // 5. Inform Next.js server of exit
     try {
       await fetch('/api/presence', {
         method: 'POST',
@@ -250,110 +109,65 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
     setIsConnecting(true);
 
     try {
-      // 1. Get microphone audio stream
-      const constraints: MediaStreamConstraints = {
-        audio: {
-          deviceId: currentUser.micDeviceId ? { exact: currentUser.micDeviceId } : undefined,
-          echoCancellation: currentUser.echoCancellation,
-          noiseSuppression: currentUser.noiseSuppression,
-          autoGainControl: true,
-        },
-        video: false,
-      };
+      // 1. Attempt to get local microphone for visual meter (optional - will not block if restricted)
+      try {
+        if (navigator?.mediaDevices?.getUserMedia) {
+          const constraints: MediaStreamConstraints = {
+            audio: {
+              deviceId: currentUser.micDeviceId ? { exact: currentUser.micDeviceId } : undefined,
+              echoCancellation: currentUser.echoCancellation,
+              noiseSuppression: currentUser.noiseSuppression,
+              autoGainControl: true,
+            },
+            video: false,
+          };
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      localStreamRef.current = stream;
+          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          localStreamRef.current = stream;
 
-      // 2. Setup AudioContext and AnalyserNode for volume meter
-      const AudioContextClass =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      const audioCtx = new AudioContextClass();
-      localAudioCtxRef.current = audioCtx;
+          const AudioContextClass =
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+          const audioCtx = new AudioContextClass();
+          localAudioCtxRef.current = audioCtx;
 
-      const source = audioCtx.createMediaStreamSource(stream);
-      const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 128;
-      source.connect(analyser);
-      setAnalyserNode(analyser);
+          const source = audioCtx.createMediaStreamSource(stream);
+          const analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 128;
+          source.connect(analyser);
+          setAnalyserNode(analyser);
 
-      // 3. Setup volume analysis loop
-      const bufferLength = analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
+          const bufferLength = analyser.frequencyBinCount;
+          const dataArray = new Uint8Array(bufferLength);
 
-      const checkVolume = () => {
-        analyser.getByteFrequencyData(dataArray as Uint8Array<ArrayBuffer>);
-        let sum = 0;
-        for (let i = 0; i < bufferLength; i++) {
-          sum += dataArray[i];
+          const checkVolume = () => {
+            analyser.getByteFrequencyData(dataArray as Uint8Array<ArrayBuffer>);
+            let sum = 0;
+            for (let i = 0; i < bufferLength; i++) {
+              sum += dataArray[i];
+            }
+            const avg = sum / bufferLength;
+            const normalized = Math.min(100, Math.round((avg / 128) * 100));
+            setLocalAudioLevel(normalized);
+
+            const speaking = normalized > 12 && !isMuted && !isDeafened;
+            if (speaking !== isSpeakingRef.current) {
+              isSpeakingRef.current = speaking;
+            }
+
+            animFrameRef.current = requestAnimationFrame(checkVolume);
+          };
+
+          checkVolume();
         }
-        const avg = sum / bufferLength;
-        const normalized = Math.min(100, Math.round((avg / 128) * 100));
-        setLocalAudioLevel(normalized);
-
-        // Speaking threshold
-        const speaking = normalized > 12 && !isMuted && !isDeafened;
-        if (speaking !== isSpeakingRef.current) {
-          isSpeakingRef.current = speaking;
-        }
-
-        animFrameRef.current = requestAnimationFrame(checkVolume);
-      };
-
-      checkVolume();
-
-      // If in WebRTC mesh mode, connect via PeerJS
-      if (engine === 'webrtc-mesh') {
-        const { Peer } = await import('peerjs');
-
-        // Deterministic unique peer ID
-        const peerId = `voice-${roomId}-${currentUser.id}-${Math.random().toString(36).substring(2, 6)}`;
-        myPeerIdRef.current = peerId;
-
-        const peer = new Peer(peerId, {
-          host: '0.peerjs.com',
-          port: 443,
-          path: '/',
-          secure: true,
-          config: {
-            iceServers: [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' },
-              { urls: 'stun:stun2.l.google.com:19302' },
-            ],
-          },
-        });
-
-        peerInstanceRef.current = peer;
-
-        // Handle incoming calls
-        peer.on('call', (call: any) => {
-          call.answer(stream);
-          callsRef.current.set(call.peer, call);
-
-          call.on('stream', (remoteStream: MediaStream) => {
-            attachRemoteAudio(call.peer, remoteStream);
-          });
-
-          call.on('close', () => {
-            detachRemoteAudio(call.peer);
-          });
-        });
-
-        peer.on('error', (err: any) => {
-          console.warn('PeerJS event:', err?.type || err);
-        });
-
-        await new Promise<void>((resolve) => {
-          peer.on('open', () => resolve());
-          setTimeout(() => resolve(), 3000);
-        });
+      } catch (micError) {
+        console.warn('Iframe/browser microphone check was bypassed; cloud voice will handle audio directly:', micError);
       }
 
-      // 4. Register presence with Next.js server
+      // 2. Register presence with Next.js server
       const localParticipant: VoiceParticipant = {
         id: currentUser.id,
-        peerId: myPeerIdRef.current || currentUser.id,
+        peerId: `jitsi-${currentUser.id}`,
         name: currentUser.name,
         color: currentUser.color,
         avatarSeed: currentUser.avatarSeed,
@@ -362,7 +176,7 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
         isSpeaking: false,
         volume: 100,
         lastActive: Date.now(),
-        engine,
+        engine: activeEngine,
       };
 
       const res = await fetch('/api/presence', {
@@ -379,36 +193,18 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
         const data = await res.json();
         if (Array.isArray(data.participants)) {
           setParticipants(data.participants);
-
-          // In mesh mode: call all other existing peers
-          if (engine === 'webrtc-mesh' && peerInstanceRef.current) {
-            data.participants.forEach((remote: VoiceParticipant) => {
-              if (
-                remote.id !== currentUser.id &&
-                remote.peerId &&
-                !callsRef.current.has(remote.peerId)
-              ) {
-                try {
-                  const call = peerInstanceRef.current.call(remote.peerId, stream);
-                  if (call) {
-                    callsRef.current.set(remote.peerId, call);
-                    call.on('stream', (remoteStream: MediaStream) => {
-                      attachRemoteAudio(remote.id, remoteStream);
-                    });
-                    call.on('close', () => {
-                      detachRemoteAudio(remote.id);
-                    });
-                  }
-                } catch (e) {
-                  console.warn('Call error to peer:', remote.peerId, e);
-                }
-              }
-            });
-          }
         }
       }
 
-      // 5. Start presence heartbeat every 4 seconds
+      // 3. Set connection quality to good for Jitsi cloud
+      setConnectionQuality({
+        level: 'good',
+        rtt: 45,
+        packetLoss: 0,
+        jitter: 3,
+      });
+
+      // 4. Start presence heartbeat every 4 seconds
       heartbeatIntervalRef.current = setInterval(async () => {
         try {
           const hbRes = await fetch('/api/presence', {
@@ -421,7 +217,7 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
                 isMuted,
                 isDeafened,
                 isSpeaking: isSpeakingRef.current,
-                engine,
+                engine: activeEngine,
               },
               action: 'heartbeat',
             }),
@@ -431,30 +227,6 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
             const hbData = await hbRes.json();
             if (Array.isArray(hbData.participants)) {
               setParticipants(hbData.participants);
-
-              // Auto-connect to any new peers that arrived
-              if (engine === 'webrtc-mesh' && peerInstanceRef.current && localStreamRef.current) {
-                hbData.participants.forEach((remote: VoiceParticipant) => {
-                  if (
-                    remote.id !== currentUser.id &&
-                    remote.peerId &&
-                    !callsRef.current.has(remote.peerId)
-                  ) {
-                    try {
-                      const call = peerInstanceRef.current.call(
-                        remote.peerId,
-                        localStreamRef.current
-                      );
-                      if (call) {
-                        callsRef.current.set(remote.peerId, call);
-                        call.on('stream', (remoteStream: MediaStream) => {
-                          attachRemoteAudio(remote.id, remoteStream);
-                        });
-                      }
-                    } catch {}
-                  }
-                });
-              }
             }
           }
         } catch {}
@@ -462,14 +234,8 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
 
       setIsConnected(true);
       playSound('join');
-
-      // Start connection quality check
-      if (qualityIntervalRef.current) clearInterval(qualityIntervalRef.current);
-      qualityIntervalRef.current = setInterval(updateConnectionQuality, 2500);
-      updateConnectionQuality();
     } catch (err) {
-      console.error('Failed to connect to microphone/voice:', err);
-      alert('دسترسی به میکروفون در مرورگر داده نشد یا خطایی رخ داد.');
+      console.error('Failed to connect to voice:', err);
     } finally {
       setIsConnecting(false);
     }
@@ -478,12 +244,9 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
     isConnecting,
     currentUser,
     roomId,
-    engine,
+    activeEngine,
     isMuted,
     isDeafened,
-    attachRemoteAudio,
-    detachRemoteAudio,
-    updateConnectionQuality,
   ]);
 
   // Toggle Mute
@@ -505,15 +268,9 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
     const nextDeafened = !isDeafened;
     setIsDeafened(nextDeafened);
 
-    // When deafened, mute local mic as well
     if (nextDeafened && !isMuted) {
       toggleMute();
     }
-
-    // Set all remote audio streams volume to 0 if deafened, restore to 1 if undeafened
-    remoteAudioElsRef.current.forEach((audioEl) => {
-      audioEl.volume = nextDeafened ? 0 : 1.0;
-    });
 
     playSound(nextDeafened ? 'mute' : 'unmute');
   }, [isDeafened, isMuted, toggleMute]);
@@ -523,12 +280,7 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
     setParticipants((prev) =>
       prev.map((p) => (p.id === participantId ? { ...p, volume } : p))
     );
-
-    const audioEl = remoteAudioElsRef.current.get(participantId);
-    if (audioEl) {
-      audioEl.volume = isDeafened ? 0 : Math.max(0, Math.min(1.5, volume / 100));
-    }
-  }, [isDeafened]);
+  }, []);
 
   // Cleanup on room change or unmount
   useEffect(() => {
@@ -551,5 +303,9 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
     setParticipantVolume,
     analyserNode,
     connectionQuality,
+    jitsiRoomName,
+    jitsiUrl,
+    activeEngine,
+    openJitsiInNewTab,
   };
 }

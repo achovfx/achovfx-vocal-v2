@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings, Mic, Volume2, ShieldCheck, Check, Sparkles, Sliders } from 'lucide-react';
-import { UserProfile } from '@/lib/types';
+import { Settings, Mic, Volume2, ShieldCheck, Check, Sparkles, Sliders, Server, Radio } from 'lucide-react';
+import { UserProfile, VoiceEngine } from '@/lib/types';
 import { GlassCard } from './glass/GlassCard';
 
 interface SettingsModalProps {
@@ -24,6 +24,9 @@ export function SettingsModal({
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>(currentUser.micDeviceId || '');
   const [noiseSuppression, setNoiseSuppression] = useState(currentUser.noiseSuppression);
   const [echoCancellation, setEchoCancellation] = useState(currentUser.echoCancellation);
+  const [preferredVoiceEngine, setPreferredVoiceEngine] = useState<VoiceEngine>(
+    currentUser.preferredVoiceEngine || 'jitsi-cloud'
+  );
 
   // Mic test state
   const [isTestingMic, setIsTestingMic] = useState(false);
@@ -139,6 +142,7 @@ export function SettingsModal({
       micDeviceId: selectedDeviceId,
       noiseSuppression,
       echoCancellation,
+      preferredVoiceEngine,
     });
     onClose();
   };
@@ -294,17 +298,72 @@ export function SettingsModal({
             </div>
           </div>
 
-          {/* Section 3: Architecture Info */}
+          {/* Section 3: Ready Voice Service Provider */}
+          <div className="pt-3 border-t border-white/10">
+            <h3 className="text-xs font-semibold text-cyan-300 mb-2 flex items-center gap-1.5">
+              <Radio className="w-4 h-4" />
+              سرویس ویس چت آماده (Ready Cloud Voice)
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setPreferredVoiceEngine('jitsi-cloud')}
+                className={`p-3 rounded-xl border text-right transition-all flex flex-col gap-1 ${
+                  preferredVoiceEngine === 'jitsi-cloud'
+                    ? 'bg-indigo-600/20 border-indigo-400/60 ring-1 ring-indigo-400'
+                    : 'bg-white/5 border-white/10 hover:bg-white/10'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                    Jitsi Meet (پیشنهادی)
+                  </span>
+                  {preferredVoiceEngine === 'jitsi-cloud' && (
+                    <Check className="w-3.5 h-3.5 text-cyan-400" />
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  سایت آماده و پایدار meet.jit.si با سرورهای قدرتمند ابری
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPreferredVoiceEngine('jitsi-8x8')}
+                className={`p-3 rounded-xl border text-right transition-all flex flex-col gap-1 ${
+                  preferredVoiceEngine === 'jitsi-8x8'
+                    ? 'bg-indigo-600/20 border-indigo-400/60 ring-1 ring-indigo-400'
+                    : 'bg-white/5 border-white/10 hover:bg-white/10'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <Server className="w-3.5 h-3.5 text-indigo-400" />
+                    سرور کمکی 8x8 Cloud
+                  </span>
+                  {preferredVoiceEngine === 'jitsi-8x8' && (
+                    <Check className="w-3.5 h-3.5 text-cyan-400" />
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  سایت جایگزین 8x8.vc با کیفیت بالا بدون قطعی
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {/* Section 4: Architecture Info */}
           <div className="pt-3 border-t border-white/10">
             <div className="p-3 rounded-xl bg-cyan-950/20 border border-cyan-500/20 text-[11px] text-slate-300 space-y-1">
               <p className="font-semibold text-cyan-300 flex items-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-                معماری سرور و ویس‌چت رایگان (Vercel Ready)
+                معماری سرور و ویس‌چت آماده (Ready-Made Voice Platform)
               </p>
               <p className="text-slate-400 leading-relaxed">
-                • چت متنی، رویدادها و اتاق‌ها مستقیماً بر روی سرور <b>Next.js</b> پردازش می‌شوند.
+                • ویس‌چت مستقیماً از طریق زیرساخت آماده، پایدار و رایگان <b>Jitsi Meet SFU</b> تأمین می‌شود.
                 <br />
-                • ویس‌چت صوتی به صورت گروهی از طریق پروتکل <b>WebRTC PeerJS Mesh</b> با سرورهای رایگان STUN گوگل و به صورت جایگزین از طریق <b>Jitsi Cloud SFU</b> هدایت می‌شود تا مصرف دیتای سرور روی Vercel کاملاً صفر باشد.
+                • کاربران می‌توانند هم در داخل صفحه و هم با زدن دکمه <b>«تب اختصاصی»</b> بدون کوچک‌ترین محدودیت مجوز یا فایروال با کیفیت عالی گفتگو کنند.
               </p>
             </div>
           </div>

@@ -23,7 +23,18 @@ export interface VoiceParticipant {
   volume: number; // 0 to 100, local volume adjustment
   audioLevel?: number; // 0 to 100 live RMS audio level
   lastActive: number;
-  engine?: 'webrtc-mesh' | 'jitsi-cloud';
+  engine?: VoiceEngine;
+}
+
+export type VoiceEngine = 'jitsi-cloud' | 'jitsi-8x8' | 'webrtc-mesh';
+
+export type ConnectionQualityLevel = 'good' | 'fair' | 'poor' | 'disconnected';
+
+export interface ConnectionQuality {
+  level: ConnectionQualityLevel;
+  rtt?: number;
+  packetLoss?: number;
+  jitter?: number;
 }
 
 export interface RoomChannel {
@@ -44,14 +55,5 @@ export interface UserProfile {
   micDeviceId?: string;
   noiseSuppression: boolean;
   echoCancellation: boolean;
+  preferredVoiceEngine?: VoiceEngine;
 }
-
-export type ConnectionQualityLevel = 'good' | 'fair' | 'poor' | 'disconnected';
-
-export interface ConnectionQuality {
-  level: ConnectionQualityLevel;
-  rtt?: number; // round-trip time in milliseconds
-  packetLoss?: number; // packet loss percentage (0-100)
-  jitter?: number; // jitter in milliseconds
-}
-
