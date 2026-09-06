@@ -6,6 +6,7 @@ import { RoomChannel, UserProfile } from '@/lib/types';
 import { ChannelSidebar } from '@/components/ChannelSidebar';
 import { TextChatPanel } from '@/components/TextChatPanel';
 import { SettingsModal } from '@/components/SettingsModal';
+import { ConnectionQualityIndicator } from '@/components/ConnectionQualityIndicator';
 import { useVoiceChat } from '@/hooks/useVoiceChat';
 import { defaultChannels } from '@/lib/serverState';
 import { useUserProfile } from '@/lib/userProfile';
@@ -57,6 +58,7 @@ export default function Home() {
     disconnectVoice,
     toggleMute,
     toggleDeafen,
+    connectionQuality,
   } = useVoiceChat({
     roomId: connectedRoomId || currentRoomId,
     currentUser,
@@ -147,6 +149,11 @@ export default function Home() {
             <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400 font-medium">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span>ویس فعال ({participants.length} نفر)</span>
+              <ConnectionQualityIndicator
+                quality={connectionQuality}
+                isConnected={isConnected}
+                showPingText={true}
+              />
             </div>
           )}
 
@@ -199,6 +206,7 @@ export default function Home() {
             isMuted={isMuted}
             isDeafened={isDeafened}
             localAudioLevel={localAudioLevel}
+            connectionQuality={connectionQuality}
             onSelectChannel={(roomId) => {
               setCurrentRoomId(roomId);
               setMobileSidebarOpen(false);
@@ -231,6 +239,7 @@ export default function Home() {
           isMuted={isMuted}
           isDeafened={isDeafened}
           localAudioLevel={localAudioLevel}
+          connectionQuality={connectionQuality}
           onConnectVoice={() => handleConnectToVoice(currentRoomId)}
           onDisconnectVoice={handleDisconnectVoice}
           onToggleMute={toggleMute}

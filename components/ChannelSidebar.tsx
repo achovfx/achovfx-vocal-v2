@@ -14,7 +14,8 @@ import {
   Users,
   Sparkles,
 } from 'lucide-react';
-import { RoomChannel, UserProfile, VoiceParticipant } from '@/lib/types';
+import { RoomChannel, UserProfile, VoiceParticipant, ConnectionQuality } from '@/lib/types';
+import { ConnectionQualityIndicator } from '@/components/ConnectionQualityIndicator';
 
 interface ChannelSidebarProps {
   currentRoomId: string;
@@ -27,6 +28,7 @@ interface ChannelSidebarProps {
   isMuted: boolean;
   isDeafened: boolean;
   localAudioLevel: number;
+  connectionQuality?: ConnectionQuality;
   onSelectChannel: (roomId: string) => void;
   onConnectVoice: (roomId: string) => void;
   onDisconnectVoice: () => void;
@@ -46,6 +48,7 @@ export function ChannelSidebar({
   isMuted,
   isDeafened,
   localAudioLevel,
+  connectionQuality,
   onSelectChannel,
   onConnectVoice,
   onDisconnectVoice,
@@ -223,9 +226,17 @@ export function ChannelSidebar({
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               <div>
-                <p className="text-xs font-bold text-emerald-300 truncate max-w-[150px]">
-                  {connectedChannel.nameFa || connectedChannel.name}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs font-bold text-emerald-300 truncate max-w-[130px]">
+                    {connectedChannel.nameFa || connectedChannel.name}
+                  </p>
+                  {connectionQuality && (
+                    <ConnectionQualityIndicator
+                      quality={connectionQuality}
+                      isConnected={isConnected}
+                    />
+                  )}
+                </div>
                 <p className="text-[10px] text-emerald-400/70">
                   اتصال زنده P2P WebRTC
                 </p>

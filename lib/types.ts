@@ -45,3 +45,13 @@ export interface UserProfile {
   noiseSuppression: boolean;
   echoCancellation: boolean;
 }
+
+export type ConnectionQualityLevel = 'good' | 'fair' | 'poor' | 'disconnected';
+
+export interface ConnectionQuality {
+  level: ConnectionQualityLevel;
+  rtt?: number; // round-trip time in milliseconds
+  packetLoss?: number; // packet loss percentage (0-100)
+  jitter?: number; // jitter in milliseconds
+}
+

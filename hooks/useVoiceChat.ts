@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { VoiceParticipant, UserProfile } from '@/lib/types';
+import { VoiceParticipant, UserProfile, ConnectionQuality, ConnectionQualityLevel } from '@/lib/types';
 import { playSound } from '@/lib/sounds';
 
 interface UseVoiceChatOptions {
@@ -18,6 +18,9 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
   const [participants, setParticipants] = useState<VoiceParticipant[]>([]);
   const [localAudioLevel, setLocalAudioLevel] = useState(0);
   const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
+  const [connectionQuality, setConnectionQuality] = useState<ConnectionQuality>({
+    level: 'disconnected',
+  });
 
   // References
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -29,6 +32,115 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
   const animFrameRef = useRef<number | null>(null);
   const isSpeakingRef = useRef<boolean>(false);
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const qualityIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Measure WebRTC stream quality from active RTCPeerConnections
+  const updateConnectionQuality = useCallback(async () => {
+    if (!peerInstanceRef.current || peerInstanceRef.current.destroyed) {
+      setConnectionQuality({ level: 'disconnected' });
+      return;
+    }
+
+    // If connected to voice room without other participants yet, WebRTC signaling is healthy
+    if (callsRef.current.size === 0) {
+      setConnectionQuality({
+        level: 'good',
+        rtt: undefined,
+        packetLoss: 0,
+        jitter: 0,
+      });
+      return;
+    }
+
+    let totalRtt = 0;
+    let rttCount = 0;
+    let totalLoss = 0;
+    let lossCount = 0;
+    let totalJitter = 0;
+    let jitterCount = 0;
+    let failedConnections = 0;
+
+    for (const call of callsRef.current.values()) {
+      const pc = call?.peerConnection as RTCPeerConnection | undefined;
+      if (!pc) continue;
+
+      if (
+        pc.connectionState === 'failed' ||
+        pc.iceConnectionState === 'failed' ||
+        pc.connectionState === 'disconnected'
+      ) {
+        failedConnections++;
+        continue;
+      }
+
+      try {
+        const stats = await pc.getStats();
+        stats.forEach((report: any) => {
+          // Candidate pair round trip time
+          if (
+            (report.type === 'candidate-pair' || report.type === 'remote-candidate') &&
+            (report.state === 'succeeded' || report.nominated === true)
+          ) {
+            const rttVal = report.currentRoundTripTime ?? report.roundTripTime;
+            if (typeof rttVal === 'number' && !isNaN(rttVal) && rttVal > 0) {
+              totalRtt += rttVal * 1000;
+              rttCount++;
+            }
+          }
+
+          // Inbound audio RTP stats
+          if (
+            report.type === 'inbound-rtp' &&
+            (report.kind === 'audio' || report.mediaType === 'audio')
+          ) {
+            if (typeof report.jitter === 'number' && !isNaN(report.jitter)) {
+              totalJitter += report.jitter * 1000;
+              jitterCount++;
+            }
+            if (
+              typeof report.packetsLost === 'number' &&
+              typeof report.packetsReceived === 'number'
+            ) {
+              const totalPackets = report.packetsLost + report.packetsReceived;
+              if (totalPackets > 0) {
+                const lossRate = (report.packetsLost / totalPackets) * 100;
+                totalLoss += lossRate;
+                lossCount++;
+              }
+            }
+          }
+        });
+      } catch {}
+    }
+
+    if (failedConnections > 0 && rttCount === 0) {
+      setConnectionQuality({
+        level: 'poor',
+        packetLoss: 100,
+      });
+      return;
+    }
+
+    const avgRtt = rttCount > 0 ? Math.round(totalRtt / rttCount) : undefined;
+    const avgLoss = lossCount > 0 ? Math.round((totalLoss / lossCount) * 10) / 10 : 0;
+    const avgJitter = jitterCount > 0 ? Math.round(totalJitter / jitterCount) : undefined;
+
+    let level: ConnectionQualityLevel = 'good';
+    if (avgLoss > 6 || (avgRtt !== undefined && avgRtt > 280)) {
+      level = 'poor';
+    } else if (avgLoss > 1.8 || (avgRtt !== undefined && avgRtt > 140)) {
+      level = 'fair';
+    } else {
+      level = 'good';
+    }
+
+    setConnectionQuality({
+      level,
+      rtt: avgRtt,
+      packetLoss: avgLoss,
+      jitter: avgJitter,
+    });
+  }, []);
 
   // Helper to attach remote audio stream
   const attachRemoteAudio = useCallback((id: string, stream: MediaStream) => {
@@ -102,11 +214,16 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
       peerInstanceRef.current = null;
     }
 
-    // 7. Clear heartbeat
+    // 7. Clear heartbeat and quality monitors
     if (heartbeatIntervalRef.current) {
       clearInterval(heartbeatIntervalRef.current);
       heartbeatIntervalRef.current = null;
     }
+    if (qualityIntervalRef.current) {
+      clearInterval(qualityIntervalRef.current);
+      qualityIntervalRef.current = null;
+    }
+    setConnectionQuality({ level: 'disconnected' });
 
     // 8. Inform Next.js server of exit
     try {
@@ -345,6 +462,11 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
 
       setIsConnected(true);
       playSound('join');
+
+      // Start connection quality check
+      if (qualityIntervalRef.current) clearInterval(qualityIntervalRef.current);
+      qualityIntervalRef.current = setInterval(updateConnectionQuality, 2500);
+      updateConnectionQuality();
     } catch (err) {
       console.error('Failed to connect to microphone/voice:', err);
       alert('دسترسی به میکروفون در مرورگر داده نشد یا خطایی رخ داد.');
@@ -361,6 +483,7 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
     isDeafened,
     attachRemoteAudio,
     detachRemoteAudio,
+    updateConnectionQuality,
   ]);
 
   // Toggle Mute
@@ -427,5 +550,6 @@ export function useVoiceChat({ roomId, currentUser, engine }: UseVoiceChatOption
     toggleDeafen,
     setParticipantVolume,
     analyserNode,
+    connectionQuality,
   };
 }

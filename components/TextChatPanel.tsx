@@ -16,8 +16,9 @@ import {
   Check,
   Settings,
 } from 'lucide-react';
-import { ChatMessage, UserProfile, VoiceParticipant } from '@/lib/types';
+import { ChatMessage, UserProfile, VoiceParticipant, ConnectionQuality } from '@/lib/types';
 import { playSound } from '@/lib/sounds';
+import { ConnectionQualityIndicator } from '@/components/ConnectionQualityIndicator';
 
 interface TextChatPanelProps {
   roomId: string;
@@ -30,6 +31,7 @@ interface TextChatPanelProps {
   isMuted: boolean;
   isDeafened: boolean;
   localAudioLevel: number;
+  connectionQuality?: ConnectionQuality;
   onConnectVoice: () => void;
   onDisconnectVoice: () => void;
   onToggleMute: () => void;
@@ -48,6 +50,7 @@ export function TextChatPanel({
   isMuted,
   isDeafened,
   localAudioLevel,
+  connectionQuality,
   onConnectVoice,
   onDisconnectVoice,
   onToggleMute,
@@ -273,6 +276,13 @@ export function TextChatPanel({
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                 <span className="font-medium hidden sm:inline">متصل به ویس</span>
+                {connectionQuality && (
+                  <ConnectionQualityIndicator
+                    quality={connectionQuality}
+                    isConnected={isConnectedToVoice}
+                    showPingText={true}
+                  />
+                )}
                 <button
                   onClick={onToggleMute}
                   title={isMuted ? 'باز کردن میکروفون' : 'بستن میکروفون'}
