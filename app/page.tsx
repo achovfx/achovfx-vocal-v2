@@ -8,32 +8,11 @@ import { TextChatPanel } from '@/components/TextChatPanel';
 import { SettingsModal } from '@/components/SettingsModal';
 import { useVoiceChat } from '@/hooks/useVoiceChat';
 import { defaultChannels } from '@/lib/serverState';
+import { useUserProfile } from '@/lib/userProfile';
 
 export default function Home() {
-  // Current user state (persisted locally)
-  const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('vc_user_profile');
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch {}
-      }
-    }
-    const randId = Math.random().toString(36).substring(2, 9);
-    const names = ['شاهین', 'آریا', 'سروش', 'امیر', 'سارا', 'نیما', 'پرهام', 'رویا'];
-    const colors = ['#6366f1', '#06b6d4', '#10b981', '#ec4899', '#8b5cf6', '#f59e0b'];
-    const randomName = names[Math.floor(Math.random() * names.length)];
-    const randomColor = colors[Math.floor(Math.random() * colors.length)];
-    return {
-      id: `user-${randId}`,
-      name: `${randomName}_${Math.floor(Math.random() * 90 + 10)}`,
-      color: randomColor,
-      avatarSeed: randId,
-      noiseSuppression: true,
-      echoCancellation: true,
-    };
-  });
+  // Current user state (hydrated safely with useSyncExternalStore)
+  const [currentUser, handleSaveProfile] = useUserProfile();
 
   // Exactly 3 channels
   const [channels, setChannels] = useState<RoomChannel[]>(defaultChannels);
@@ -42,17 +21,6 @@ export default function Home() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-
-  // Save profile changes to local storage
-  const handleSaveProfile = (updated: Partial<UserProfile>) => {
-    setCurrentUser((prev) => {
-      const next = { ...prev, ...updated };
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('vc_user_profile', JSON.stringify(next));
-      }
-      return next;
-    });
-  };
 
   // Fetch rooms list from Next.js server
   useEffect(() => {

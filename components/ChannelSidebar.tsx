@@ -278,6 +278,7 @@ export function ChannelSidebar({
           title="تغییر نام و رنگ پروفایل"
         >
           <div
+            suppressHydrationWarning
             className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs text-white border-2 border-indigo-400 shadow-md"
             style={{
               background: `linear-gradient(135deg, ${currentUser.color || '#6366f1'} 0%, #020617 100%)`,
@@ -286,7 +287,7 @@ export function ChannelSidebar({
             {currentUser.name.slice(0, 2).toUpperCase()}
           </div>
           <div className="truncate text-right">
-            <p className="text-xs font-semibold text-white truncate max-w-[130px]">
+            <p suppressHydrationWarning className="text-xs font-semibold text-white truncate max-w-[130px]">
               {currentUser.name}
             </p>
             <div className="flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
