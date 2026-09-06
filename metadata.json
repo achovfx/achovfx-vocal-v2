@@ -1,0 +1,6 @@
+{
+  "name": "Group Voice & Text Chat",
+  "description": "Modern glassmorphism group voice chat with real-time text messaging and free cloud WebRTC infrastructure.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
